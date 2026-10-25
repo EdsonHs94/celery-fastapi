@@ -1,0 +1,33 @@
+schema: spec-driven
+
+context: |
+  Language: es
+  All artifacts must be written in es.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Proyecto educativo nuevo: generación asíncrona de reportes CSV.
+  Stack acordado: FastAPI, Celery, RabbitMQ, PostgreSQL y SQLModel
+  (basado en Pydantic y SQLAlchemy). Sin Redis en la primera versión.
+  Arquitectura por capas: presentación, aplicación, dominio e infraestructura.
+  Dominio independiente del ORM; modelos de entrada, tabla y respuesta separados.
+  Patrón Repository específico e inyección por constructor en los casos de uso.
+  Aplicar SOLID y KISS: contratos pequeños, sin repositorios genéricos ni
+  contenedor de dependencias adicional. Sesiones SQL síncronas por operación.
+  API, worker, broker y base de datos se ejecutan con Docker Compose.
+  Los CSV se guardan en un volumen compartido por API y worker.
+  La preparación del SDD no equivale a implementar la aplicación: ejecutar las
+  tareas de producto solo cuando se solicite explícitamente esa etapa.
+  Los escenarios describen el contrato objetivo, no evidencia de funcionalidad existente.
+
+rules:
+  proposal:
+    - Explicar el objetivo educativo y los límites de la primera versión.
+  specs:
+    - Especificar comportamiento observable; reservar detalles internos para design.md.
+    - Cada requisito debe tener al menos un escenario WHEN/THEN verificable.
+  design:
+    - Explicitar transacciones, publicación después del commit y límites de recuperación.
+    - Separar decisiones acordadas de valores predeterminados propuestos para la prueba.
+  tasks:
+    - Usar casillas pendientes numeradas e indicar verificación en cada tarea.
+    - Incluir pruebas y documentación en el grupo que introduce el comportamiento.
+    - No marcar implementación como realizada durante la preparación del SDD.
