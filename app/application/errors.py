@@ -39,3 +39,8 @@ class TemporaryReportError(ApplicationError):
 
     code = "temporary_failure"
     message = "La generación falló temporalmente."
+
+
+class ReportFileMissing(ApplicationError):
+    code = "report_file_missing"
+    message = "El archivo del reporte ya no está disponible."

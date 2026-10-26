@@ -4,9 +4,10 @@ Laboratorio educativo de reportes asíncronos. La tarea 1 prepara un entorno
 reproducible con FastAPI, un worker Celery, RabbitMQ y PostgreSQL. La tarea 2
 implementa el dominio y los casos de uso con contratos y pruebas unitarias. La
 tarea 3 añade persistencia SQLModel/PostgreSQL, migraciones Alembic y sesiones
-por petición/proceso del worker. La API ofrece `GET /health` y la documentación
-en `/docs`; los endpoints de reportes, adaptadores CSV/archivos y tareas Celery
-de generación se implementarán después.
+por petición/proceso del worker. La tarea 4 incorpora el generador CSV y el
+almacenamiento de archivos completos. La API ofrece `GET /health` y la
+documentación en `/docs`; los adaptadores todavía no están conectados a una
+tarea Celery ni a rutas de reportes.
 
 El diseño y los escenarios están en
 [OpenSpec](openspec/changes/async-report-generation/design.md). El progreso se
@@ -76,7 +77,7 @@ explícitos del laboratorio local y no credenciales de un entorno real.
 | `DATABASE_URL` | URL `postgresql+psycopg://…` con nombre de base de datos. |
 | `BROKER_URL` | URL `amqp://…` o `amqps://…` con host. |
 | `REPORTS_DIR` | Ruta absoluta dentro del contenedor; conservar `/app/reports` para el volumen incluido. |
-| `SIMULATE_TRANSIENT_FAILURE` | Booleano; `true` prepara la demostración futura del fallo inicial y reintento. Todavía no provoca fallos. |
+| `SIMULATE_TRANSIENT_FAILURE` | Booleano; `true` habilita el fallo educativo del primer intento en el generador CSV. La conexión a Celery está pendiente. |
 | `API_PORT`, `RABBITMQ_MANAGEMENT_PORT` | Puertos del host; por defecto `8000` y `15672`. |
 
 Las URLs del ejemplo se interpolan a partir de las variables anteriores. Los
@@ -120,7 +121,7 @@ describe las dependencias y los límites de este laboratorio:
 | `domain` | `Report` inmutable, `ReportStatus`, transiciones, fechas UTC y presupuesto de tres intentos; solo biblioteca estándar. |
 | `application` | `RequestReport`, `GetReport`, `GenerateReport`, errores públicos y contratos; depende de dominio y biblioteca estándar. |
 | `presentation` | Transporte HTTP y tareas Celery; delegará en aplicación. |
-| `infrastructure` | Implementa persistencia SQLModel; incorporará publicación Celery, generación CSV y archivos. |
+| `infrastructure` | Implementa persistencia SQLModel, generación CSV y archivos; incorporará publicación Celery. |
 | `bootstrap` | Configuración y construcción de dependencias concretas para API y worker. |
 
 Los casos de uso reciben sus dependencias por constructor, sin contenedor DI.
@@ -242,6 +243,76 @@ docker stop reports-postgres-test
 La suite verifica el esquema y downgrade real, alta/lectura/actualización,
 ausentes, rollback (también al fallar commit), sesiones aisladas y su cierre,
 y conexiones distintas tras un fork real. No usa SQLite como sustituto.
+
+## CSV ficticio y archivos completos
+
+`CSVReportGenerator(simulate_transient_failure: bool)` recibe la configuración
+por constructor. `generate(report_id, attempt)` devuelve bytes UTF-8 con coma
+como delimitador, saltos de línea `\n` y exactamente 100 ventas ficticias.
+No consulta ventas reales ni utiliza reloj, aleatoriedad o floats. Para cada
+entero `n` del 1 al 100 usa `sale_id=n`, `customer=Cliente NNN`,
+`total=Decimal(n) * Decimal("10.00")` con dos decimales y `currency=PEN`.
+Dos reportes distintos producen el mismo contenido.
+
+El encabezado y las primeras filas son exactamente:
+
+```csv
+sale_id,customer,total,currency
+1,Cliente 001,10.00,PEN
+2,Cliente 002,20.00,PEN
+```
+
+Tras las filas intermedias, la última fila es:
+
+```csv
+100,Cliente 100,1000.00,PEN
+```
+
+Con `SIMULATE_TRANSIENT_FAILURE=true`, el generador lanza
+`TemporaryReportError` cuando `attempt == 1`, antes de serializar el CSV o
+escribir archivos. El segundo intento permite producir el contenido. Junto al
+punto de fallo se incluye este comentario educativo:
+
+> Fallo intencional para demostrar los reintentos de Celery. La primera ejecución falla y el siguiente intento continúa normalmente. Esta simulación es educativa y debe desactivarse fuera de la prueba.
+
+Para completar desde el primer intento, cambia en `.env`:
+
+```dotenv
+SIMULATE_TRANSIENT_FAILURE=false
+```
+
+Tras cambiar configuración, recrea el worker para que lea el entorno nuevo:
+
+```bash
+docker compose up -d --no-build --force-recreate worker
+```
+
+Esta entrega verifica el comportamiento llamando a `GenerateReport` con los
+adaptadores reales y un repositorio de prueba. Aún no hay tarea Celery que
+programe el reintento ni rutas HTTP para solicitar o descargar reportes.
+La futura composición pasará `settings.simulate_transient_failure` al generador
+y `settings.reports_dir` al almacenamiento; los adaptadores no leen el entorno.
+
+`LocalReportStorage(reports_dir: Path)` crea el directorio al escribir. Primero
+escribe y cierra un temporal único dentro de él, y luego usa sustitución atómica
+para publicar `report-{id}.csv`. `write(report_id, content)` devuelve solo ese
+nombre relativo tras el reemplazo exitoso. Un fallo intenta limpiar el temporal
+y conserva el archivo final anterior completo, si existía. `GenerateReport`
+registra `completed` y `file_ref` después de esa escritura.
+
+El método concreto `resolve(file_ref)` devuelve un `Path` solo para nombres
+canónicos `report-{uuid}.csv` dentro de la raíz. Rechaza rutas absolutas,
+traversal, temporales, directorios y symlinks, incluidos los internos. No recibe
+rutas del cliente. Si falta un archivo final, lanza `ReportFileMissing` con
+código público `report_file_missing`, disponible para el futuro HTTP 410 sin
+exponer rutas privadas. No se añade esa operación al contrato de aplicación.
+
+El volumen Compose `reports` es compartido por API y worker, ambos en
+`/app/reports`, el valor de `REPORTS_DIR`. Así, el worker podrá escribir donde
+la API resolverá el archivo. Cambiar esa ruta requiere ajustar el montaje de
+ambos servicios. La sustitución evita servir archivos parciales; no se ofrecen
+locks entre consumidores ni durabilidad ante caída con `fsync`. El laboratorio
+prevé un consumidor.
 
 ## Logs y almacenamiento
 
