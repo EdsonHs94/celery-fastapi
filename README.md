@@ -5,9 +5,9 @@ reproducible con FastAPI, un worker Celery, RabbitMQ y PostgreSQL. La tarea 2
 implementa el dominio y los casos de uso con contratos y pruebas unitarias. La
 tarea 3 añade persistencia SQLModel/PostgreSQL, migraciones Alembic y sesiones
 por petición/proceso del worker. La tarea 4 incorpora el generador CSV y el
-almacenamiento de archivos completos. La API ofrece `GET /health` y la
-documentación en `/docs`; los adaptadores todavía no están conectados a una
-tarea Celery ni a rutas de reportes.
+almacenamiento de archivos completos. La tarea 5 conecta publicación y
+procesamiento real con Celery/RabbitMQ. La API ofrece `GET /health` y la
+documentación en `/docs`; las rutas HTTP de reportes siguen pendientes.
 
 El diseño y los escenarios están en
 [OpenSpec](openspec/changes/async-report-generation/design.md). El progreso se
@@ -63,7 +63,7 @@ de datos ni del broker. Los healthchecks de cada servicio se muestran en `ps`.
 
 Los puertos publicados están vinculados a `127.0.0.1`. PostgreSQL y AMQP quedan
 en la red interna de Compose. Esta entrega crea la tabla `reports` mediante
-Alembic; todavía no registra tareas de generación.
+Alembic y registra la tarea `reports.generate`.
 
 ## Configuración
 
@@ -77,7 +77,7 @@ explícitos del laboratorio local y no credenciales de un entorno real.
 | `DATABASE_URL` | URL `postgresql+psycopg://…` con nombre de base de datos. |
 | `BROKER_URL` | URL `amqp://…` o `amqps://…` con host. |
 | `REPORTS_DIR` | Ruta absoluta dentro del contenedor; conservar `/app/reports` para el volumen incluido. |
-| `SIMULATE_TRANSIENT_FAILURE` | Booleano; `true` habilita el fallo educativo del primer intento en el generador CSV. La conexión a Celery está pendiente. |
+| `SIMULATE_TRANSIENT_FAILURE` | Booleano; `true` habilita el fallo educativo del primer intento en el generador CSV. Celery programa el segundo intento cinco segundos después. |
 | `API_PORT`, `RABBITMQ_MANAGEMENT_PORT` | Puertos del host; por defecto `8000` y `15672`. |
 
 Las URLs del ejemplo se interpolan a partir de las variables anteriores. Los
@@ -120,8 +120,8 @@ describe las dependencias y los límites de este laboratorio:
 |---|---|
 | `domain` | `Report` inmutable, `ReportStatus`, transiciones, fechas UTC y presupuesto de tres intentos; solo biblioteca estándar. |
 | `application` | `RequestReport`, `GetReport`, `GenerateReport`, errores públicos y contratos; depende de dominio y biblioteca estándar. |
-| `presentation` | Transporte HTTP y tareas Celery; delegará en aplicación. |
-| `infrastructure` | Implementa persistencia SQLModel, generación CSV y archivos; incorporará publicación Celery. |
+| `presentation` | Transporte HTTP y tareas Celery; delega en aplicación. |
+| `infrastructure` | Implementa persistencia SQLModel, generación CSV y archivos; y publicación Celery. |
 | `bootstrap` | Configuración y construcción de dependencias concretas para API y worker. |
 
 Los casos de uso reciben sus dependencias por constructor, sin contenedor DI.
@@ -151,7 +151,7 @@ al terminar y guarda `file_ref` solo tras escritura exitosa. Un
 solo después del commit y mientras queden intentos. El tercer fallo temporal
 retorna `failed` con `attempts_exhausted`; un error permanente retorna `failed`
 con `generation_failed`. Al completar limpia el error temporal. Aplicación no
-programa reintentos ni esperas: el adaptador Celery futuro traducirá esa señal.
+programa reintentos ni esperas: el adaptador Celery traduce esa señal.
 
 Los reportes `completed` y `failed` se omiten sin alterar archivo, intentos ni
 fechas. Una entrega en `processing` también se omite; no recupera un intento
@@ -212,7 +212,7 @@ heredado con `dispose(close=False)`; también hay comprobación defensiva del PI
 Los procesos liberan su engine al recibir las señales de cierre. No hay una
 conexión SQL compartida entre API y worker ni se crea engine por consulta.
 
-Las futuras tareas usarán el recurso dentro de cada invocación:
+La composición de la tarea usa el recurso dentro de cada invocación:
 
 ```python
 with app.database.session() as session:
@@ -220,8 +220,9 @@ with app.database.session() as session:
     # Construir el caso de uso con repository; él delimita transaction().
 ```
 
-Esta entrega no añade tareas de negocio para demostrar ese scope. No comparte
-sesiones entre tareas, ni mantiene una transacción durante generación de archivos.
+Cada entrega de `reports.generate` construye `GenerateReport` con una sesión
+nueva y la cierra también ante error o retry. No mantiene una transacción
+durante generación de archivos.
 
 Las pruebas de persistencia requieren `TEST_DATABASE_URL` **explícito** y una
 base cuyo nombre termine en `_test`, con driver `postgresql+psycopg`. Sin esa
@@ -287,11 +288,11 @@ Tras cambiar configuración, recrea el worker para que lea el entorno nuevo:
 docker compose up -d --no-build --force-recreate worker
 ```
 
-Esta entrega verifica el comportamiento llamando a `GenerateReport` con los
-adaptadores reales y un repositorio de prueba. Aún no hay tarea Celery que
-programe el reintento ni rutas HTTP para solicitar o descargar reportes.
-La futura composición pasará `settings.simulate_transient_failure` al generador
-y `settings.reports_dir` al almacenamiento; los adaptadores no leen el entorno.
+Las pruebas unitarias llaman a `GenerateReport` con adaptadores reales y un
+repositorio de prueba. El recorrido real descrito abajo añade PostgreSQL,
+RabbitMQ y el worker Celery. La composición pasa
+`settings.simulate_transient_failure` al generador y `settings.reports_dir` al
+almacenamiento; los adaptadores no leen el entorno. Las rutas HTTP siguen pendientes.
 
 `LocalReportStorage(reports_dir: Path)` crea el directorio al escribir. Primero
 escribe y cierra un temporal único dentro de él, y luego usa sustitución atómica
@@ -308,11 +309,108 @@ código público `report_file_missing`, disponible para el futuro HTTP 410 sin
 exponer rutas privadas. No se añade esa operación al contrato de aplicación.
 
 El volumen Compose `reports` es compartido por API y worker, ambos en
-`/app/reports`, el valor de `REPORTS_DIR`. Así, el worker podrá escribir donde
-la API resolverá el archivo. Cambiar esa ruta requiere ajustar el montaje de
+`/app/reports`, el valor de `REPORTS_DIR`. Así, el worker escribe donde
+la futura ruta de descarga resolverá el archivo. Cambiar esa ruta requiere ajustar el montaje de
 ambos servicios. La sustitución evita servir archivos parciales; no se ofrecen
 locks entre consumidores ni durabilidad ante caída con `fsync`. El laboratorio
 prevé un consumidor.
+
+## Publicación y procesamiento Celery
+
+Para solicitar un reporte en el laboratorio iniciado, usa este cliente temporal
+que compone el mismo caso de uso previsto para la futura ruta HTTP:
+
+```bash
+docker compose run --rm -T --no-deps api python - <<'PYCLIENT'
+import logging
+from app.bootstrap.config import Settings
+from app.bootstrap.worker import create_celery_app
+from app.application.use_cases import RequestReport
+from app.infrastructure.celery_publisher import CeleryReportTaskPublisher
+from app.infrastructure.persistence import SQLModelReportRepository
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+app = create_celery_app(Settings())
+try:
+    with app.database.session() as session:
+        report_id = RequestReport(
+            SQLModelReportRepository(session), CeleryReportTaskPublisher(app)
+        ).execute()
+    print(report_id)
+finally:
+    app.database.dispose()
+    app.close()
+PYCLIENT
+```
+
+El cliente confirma `pending` antes de publicar únicamente `[str(report_id)]`
+como argumentos JSON de `reports.generate`, con kwargs vacíos. Usa la cola
+`reports` durable y mensajes persistentes. El UUID también es `task_id` para
+correlación; no deduplica entregas. No llama a `AsyncResult.get()` ni espera la
+generación. Los resultados Celery se ignoran y el backend está deshabilitado:
+PostgreSQL conserva el estado público, sin Redis ni backend RPC.
+
+Las confirmaciones RabbitMQ se habilitan con `confirm_publish`. La conexión
+explícita del publisher evita esperar un productor del pool; no hay reintentos
+de publicación ni reconexiones indefinidas en la solicitud. El timeout de
+conexión, los timeouts de lectura/escritura del transporte AMQP y los timeouts
+de publicación/confirmación son de cinco segundos por operación. Estas opciones
+se consumen por Kombu/py-amqp; `broker_connection_timeout` por sí solo no limita
+la espera de confirmación. No constituyen un deadline total de cinco segundos:
+resolución DNS y comportamiento del sistema operativo pueden añadir tiempo.
+El consumidor puede reconectar al iniciar, independientemente de la publicación.
+
+El worker tiene concurrencia 1 y prefetch 1. Solo `TemporaryReportError` se
+traduce a `retry(countdown=5, max_retries=2)`: máximo tres intentos, limitado
+también por `attempts` persistidos. Un error permanente termina en `failed`
+sin retry. Un fallo al publicar el retry intenta registrar `failed` con
+`retry_publication_failed`; esta compensación es best-effort y conserva un
+terminal ya observado. Si también falla PostgreSQL, el error original sigue
+propagándose y se registra `retry_compensation_failed`.
+
+En <http://localhost:15672>, abre **Queues and Streams → reports** para observar
+la cola. Con el worker detenido, un encargo permanece listo en RabbitMQ:
+
+```bash
+docker compose stop worker
+# Ejecuta el cliente Python anterior y observa pending con attempts=0.
+docker compose up -d --no-build worker
+docker compose logs --tail=100 worker
+```
+
+Los logs incluyen `report_id`, `stage` y, al procesar estados, `attempt`.
+El cliente registra `publishing`/`published`; el worker registra `received`,
+`processing attempt=1`, `retrying attempt=1`, `retry_scheduled`,
+`processing attempt=2` y `completed attempt=2`. El mismo UUID permite seguir
+publicación, recepción, reintento y finalización. No se imprimen URLs ni
+credenciales en estos logs de aplicación.
+
+La prueba real reproducible crea un proyecto Compose, imagen y volúmenes con
+nombres únicos y ningún puerto del host. Construye, migra, publica con el worker
+ausente, inspecciona el JSON mediante la API interna RabbitMQ y vuelve a poner
+el mensaje en cola. Después arranca un worker prefork real y comprueba
+`pending/0 → retrying/1 → completed/2`, al menos cinco segundos desde el primer
+inicio, CSV con 100 filas y logs correlacionados. No usa eager ni SQLite:
+
+```bash
+python3 scripts/verify_report_worker.py
+# Para seleccionar contexto sin cambiar el contexto global:
+python3 scripts/verify_report_worker.py --context desktop-linux
+```
+
+El script elimina únicamente sus contenedores, volúmenes e imagen en `finally`,
+incluso ante error. Puede tardar varios minutos la primera vez. No modifica el
+proyecto Compose habitual ni usa sus credenciales, puertos o volúmenes.
+
+Confirmar publicación significa que RabbitMQ aceptó el mensaje; no garantiza
+finalización futura ni supervivencia ante cualquier caída. Se conserva el ack
+temprano predeterminado de Celery (`task_acks_late=False`): al caer el worker
+una tarea ya reconocida puede perderse y dejar `processing`. Una entrega aún
+no reconocida puede volver a entregarse; un retry es otro mensaje. No hay
+recuperación automática de `processing`, outbox, exclusión entre múltiples
+workers ni garantía exactamente una vez. Una caída entre commit y publicación
+puede dejar `pending` sin mensaje; un timeout de confirmación puede ser ambiguo.
+Los terminales se omiten sin regenerar ni relanzar `failed`.
 
 ## Logs y almacenamiento
 
@@ -358,4 +456,4 @@ docker compose up -d --no-build api worker
 ```
 
 Compose mantiene separada esta eliminación de la parada habitual. Redis no
-forma parte de este entorno: el seguimiento de reportes irá en PostgreSQL.
+forma parte de este entorno: el seguimiento de reportes está en PostgreSQL.

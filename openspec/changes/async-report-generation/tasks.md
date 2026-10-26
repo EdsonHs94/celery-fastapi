@@ -34,11 +34,11 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 5. Publicación y procesamiento con Celery
 
-- [ ] 5.1 Configurar Celery con RabbitMQ, JSON, cola reports, confirmaciones de publicación, límite de conexión/publicación de cinco segundos, resultados ignorados y sin backend Redis/RPC; verificar configuración y publicación real de un mensaje que contiene solo el UUID.
-- [ ] 5.2 Implementar ReportTaskPublisher con logs correlacionados; verificar propagación de errores de publicación, ausencia de espera por el resultado y conversión del UUID a un argumento serializable.
-- [ ] 5.3 Crear la tarea delgada y su composición de dependencias por proceso, traduciendo TemporaryReportError a retry con countdown=5 y max_retries=2; verificar con pruebas del adaptador que no se reintentan errores permanentes y que un fallo al programar retry intenta registrar failed.
-- [ ] 5.4 Fijar un worker con concurrencia 1 y prefetch 1 para el laboratorio; verificar recepción y reintento con un worker y RabbitMQ reales, y persistencia de un encargo enviado mientras el worker estaba detenido, sin usar modo eager como sustituto de la integración.
-- [ ] 5.5 Documentar en README logs, interfaz de RabbitMQ, límites de reentrega y ausencia de recuperación automática/outbox; verificar que publicación, recepción, reintento y finalización se correlacionan con report_id.
+- [x] 5.1 Configurar Celery con RabbitMQ, JSON, cola reports, confirmaciones de publicación, límite de conexión/publicación de cinco segundos, resultados ignorados y sin backend Redis/RPC; verificar configuración y publicación real de un mensaje que contiene solo el UUID.
+- [x] 5.2 Implementar ReportTaskPublisher con logs correlacionados; verificar propagación de errores de publicación, ausencia de espera por el resultado y conversión del UUID a un argumento serializable.
+- [x] 5.3 Crear la tarea delgada y su composición de dependencias por proceso, traduciendo TemporaryReportError a retry con countdown=5 y max_retries=2; verificar con pruebas del adaptador que no se reintentan errores permanentes y que un fallo al programar retry intenta registrar failed.
+- [x] 5.4 Fijar un worker con concurrencia 1 y prefetch 1 para el laboratorio; verificar recepción y reintento con un worker y RabbitMQ reales, y persistencia de un encargo enviado mientras el worker estaba detenido, sin usar modo eager como sustituto de la integración.
+- [x] 5.5 Documentar en README logs, interfaz de RabbitMQ, límites de reentrega y ausencia de recuperación automática/outbox; verificar que publicación, recepción, reintento y finalización se correlacionan con report_id.
 
 ## 6. API e inyección de dependencias
 
