@@ -19,6 +19,14 @@ x-application: &application
   init: true
 
 services:
+  migrate:
+    <<: *application
+    profiles: [tools]
+    command: [alembic, upgrade, head]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     <<: *application
     ports:

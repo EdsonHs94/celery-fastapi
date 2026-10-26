@@ -14,6 +14,8 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY app ./app
+COPY alembic.ini ./
+COPY migrations ./migrations
 RUN uv sync --locked --no-dev --no-editable \
     && groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home app \
