@@ -4,10 +4,10 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 1. Base del proyecto y entorno reproducible
 
-- [ ] 1.1 Crear la estructura de capas y definir Python 3.12, dependencias compatibles con FastAPI, Celery, SQLModel, Psycopg 3, Alembic, configuración y pytest mediante uv; generar uv.lock y verificar `uv sync --locked`.
-- [ ] 1.2 Crear Dockerfile y Compose con api, worker, rabbitmq y postgres, volúmenes persistentes, carpeta compartida de reportes, healthchecks y usuario RabbitMQ local propio; verificar `docker compose config --quiet` y construcción de la imagen.
-- [ ] 1.3 Añadir configuración tipada y .env.example con conexiones internas, REPORTS_DIR y SIMULATE_TRANSIENT_FAILURE=true; verificar con pruebas unitarias que se carga la configuración y se rechazan valores inválidos.
-- [ ] 1.4 Documentar en README requisitos, servicios, variables y comandos de arranque/paro, distinguiendo conservación y eliminación de volúmenes; verificar los comandos de configuración desde un entorno limpio.
+- [x] 1.1 Crear la estructura de capas y definir Python 3.12, dependencias compatibles con FastAPI, Celery, SQLModel, Psycopg 3, Alembic, configuración y pytest mediante uv; generar uv.lock y verificar `uv sync --locked`.
+- [x] 1.2 Crear Dockerfile y Compose con api, worker, rabbitmq y postgres, volúmenes persistentes, carpeta compartida de reportes, healthchecks y usuario RabbitMQ local propio; verificar `docker compose config --quiet` y construcción de la imagen.
+- [x] 1.3 Añadir configuración tipada y .env.example con conexiones internas, REPORTS_DIR y SIMULATE_TRANSIENT_FAILURE=true; verificar con pruebas unitarias que se carga la configuración y se rechazan valores inválidos.
+- [x] 1.4 Documentar en README requisitos, servicios, variables y comandos de arranque/paro, distinguiendo conservación y eliminación de volúmenes; verificar los comandos de configuración desde un entorno limpio.
 
 ## 2. Dominio y contratos de aplicación
 

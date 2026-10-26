@@ -1,0 +1,92 @@
+name: celery-fastapi-lab
+
+x-application: &application
+  image: celery-fastapi-lab:local
+  build:
+    context: .
+  environment:
+    DATABASE_URL: ${DATABASE_URL:?Copia .env.example a .env}
+    BROKER_URL: ${BROKER_URL:?Copia .env.example a .env}
+    REPORTS_DIR: ${REPORTS_DIR:-/app/reports}
+    SIMULATE_TRANSIENT_FAILURE: ${SIMULATE_TRANSIENT_FAILURE:-true}
+  volumes:
+    - reports:/app/reports
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  init: true
+
+services:
+  api:
+    <<: *application
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  worker:
+    <<: *application
+    command:
+      - celery
+      - -A
+      - app.presentation.worker:app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=1
+      - --prefetch-multiplier=1
+      - --hostname=celery@%h
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "celery -A app.presentation.worker:app inspect ping --destination celery@$$HOSTNAME --timeout 5"
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  postgres:
+    image: postgres:16.13-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Copia .env.example a .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copia .env.example a .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Copia .env.example a .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rabbitmq:
+    image: rabbitmq:4.1.8-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Copia .env.example a .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Copia .env.example a .env}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-reports}
+    ports:
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      timeout: 10s
+      start_period: 20s
+      retries: 12
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  reports:
