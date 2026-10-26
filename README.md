@@ -1,9 +1,11 @@
 # Celery y FastAPI
 
 Laboratorio educativo de reportes asíncronos. La tarea 1 prepara un entorno
-reproducible con FastAPI, un worker Celery, RabbitMQ y PostgreSQL. La API ofrece
-`GET /health` y la documentación en `/docs`; los endpoints de reportes,
-repositorios, migraciones y tareas de generación se implementarán después.
+reproducible con FastAPI, un worker Celery, RabbitMQ y PostgreSQL. La tarea 2
+implementa el dominio y los casos de uso con contratos y pruebas unitarias. La
+API ofrece `GET /health` y la documentación en `/docs`; los endpoints de
+reportes, adaptadores SQL/CSV/archivos y tareas Celery de generación se
+implementarán después.
 
 El diseño y los escenarios están en
 [OpenSpec](openspec/changes/async-report-generation/design.md). El progreso se
@@ -102,9 +104,64 @@ validar el SDD, con OpenSpec instalado:
 openspec validate async-report-generation --strict --no-interactive
 ```
 
-La estructura inicial separa `presentation`, `application`, `domain`,
-`infrastructure` y `bootstrap`. Las entradas mínimas se construyen en
-`bootstrap`; no hay conexiones SQL globales ni lógica de reportes en ellas.
+## Capas y casos de uso
+
+El [diseño vinculante](openspec/changes/async-report-generation/design.md)
+describe las dependencias y los límites de este laboratorio:
+
+| Capa | Responsabilidad y dependencias |
+|---|---|
+| `domain` | `Report` inmutable, `ReportStatus`, transiciones, fechas UTC y presupuesto de tres intentos; solo biblioteca estándar. |
+| `application` | `RequestReport`, `GetReport`, `GenerateReport`, errores públicos y contratos; depende de dominio y biblioteca estándar. |
+| `presentation` | Transporte HTTP y tareas Celery; delegará en aplicación. |
+| `infrastructure` | Implementará los contratos con SQLModel, publicación Celery, generación CSV y archivos. |
+| `bootstrap` | Configuración y construcción de dependencias concretas para API y worker. |
+
+Los casos de uso reciben sus dependencias por constructor, sin contenedor DI.
+Los contratos síncronos están en `app/application/ports.py`:
+
+- `ReportRepository`: `get(UUID) -> Report | None`, `add(Report)`, `save(Report)`
+  y `transaction() -> ContextManager[None]`.
+- `ReportTaskPublisher`: `publish(UUID) -> None`.
+- `ReportGenerator`: `generate(UUID, attempt) -> bytes`.
+- `ReportStorage`: `write(UUID, bytes) -> str`, una referencia relativa.
+
+`RequestReport.execute()` crea y confirma `pending` antes de publicar y devuelve
+solo el UUID, pues el worker puede avanzar antes de retornar. Si falla la
+persistencia, no publica y lanza `PersistenceUnavailable`. Si falla publicar,
+intenta registrar `failed` con `publication_failed` y lanza `PublicationFailed`
+con `report_id`, aunque la compensación también falle. Nunca sobrescribe un
+estado terminal que haya observado al releer el registro.
+
+`GetReport.execute(UUID)` devuelve el reporte persistido de cualquier estado;
+si no existe, lanza `ReportNotFound` sin escribir ni encargar trabajo.
+
+`GenerateReport.execute(UUID)` confirma primero `processing` e incrementa los
+intentos. Genera y almacena fuera de la transacción; después relee y confirma
+el resultado. Conserva `started_at` del primer intento, asigna `finished_at`
+al terminar y guarda `file_ref` solo tras escritura exitosa. Un
+`TemporaryReportError` registra `retrying` con `temporary_failure` y se propaga
+solo después del commit y mientras queden intentos. El tercer fallo temporal
+retorna `failed` con `attempts_exhausted`; un error permanente retorna `failed`
+con `generation_failed`. Al completar limpia el error temporal. Aplicación no
+programa reintentos ni esperas: el adaptador Celery futuro traducirá esa señal.
+
+Los reportes `completed` y `failed` se omiten sin alterar archivo, intentos ni
+fechas. Una entrega en `processing` también se omite; no recupera un intento
+interrumpido. La relectura antes de guardar evita reemplazar un terminal ya
+observado, pero no ofrece exclusión entre consumidores concurrentes. El diseño
+limita el laboratorio a un consumidor; no promete ejecución exactamente una
+vez, outbox ni recuperación automática. Una caída entre commit y publicación
+puede dejar `pending`; un archivo escrito cuyo commit final falla puede quedar
+sin estado completado. Los errores de persistencia se traducen a
+`PersistenceUnavailable` sin mensajes privados del adaptador.
+
+Todas las lecturas y escrituras usan `repository.transaction()`, que debe
+confirmar o revertir al salir; el repositorio no confirma cada operación por
+su cuenta. Las entidades separadas del ORM y sus reemplazos requieren un
+`save` explícito. Los fakes de pruebas usan copias y rollback, y la prueba de
+arquitectura restringe las importaciones de las dos capas internas. No hay
+conexiones SQL globales ni adaptadores reales de reportes en esta entrega.
 
 ## Logs y almacenamiento
 

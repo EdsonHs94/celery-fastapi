@@ -11,12 +11,12 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 2. Dominio y contratos de aplicación
 
-- [ ] 2.1 Definir Report y ReportStatus independientes del ORM, con transiciones, intentos y fechas del diseño; escribir primero y ejecutar pruebas para estados válidos, transiciones inválidas y conservación de datos terminales.
-- [ ] 2.2 Definir los contratos ReportRepository, ReportTaskPublisher, ReportGenerator y ReportStorage del diseño, y errores de aplicación; verificar sus usos mediante dependencias falsas en tests/unit/application y comprobar que dominio/aplicación no importan frameworks.
-- [ ] 2.3 Implementar RequestReport para confirmar pending antes de publicar; verificar con fakes el orden commit/publicación, ausencia de publicación si falla la persistencia y respuesta de error con registro fallido ante publicación fallida.
-- [ ] 2.4 Implementar GetReport sobre el repositorio; verificar consulta de todos los estados y error para UUID inexistente, sin crear nuevas tareas ni registros.
-- [ ] 2.5 Implementar GenerateReport con transacciones cortas, incremento de intentos, resultados terminales y presupuesto de tres intentos; verificar con fakes éxito, reintento, agotamiento, error permanente y omisión de reportes completed/failed sin efectos adicionales.
-- [ ] 2.6 Documentar las responsabilidades de las capas y sus dependencias en README, enlazando al diseño; verificar mediante una prueba de arquitectura que el dominio no depende del ORM y los casos de uso no dependen de presentación/infraestructura.
+- [x] 2.1 Definir Report y ReportStatus independientes del ORM, con transiciones, intentos y fechas del diseño; escribir primero y ejecutar pruebas para estados válidos, transiciones inválidas y conservación de datos terminales.
+- [x] 2.2 Definir los contratos ReportRepository, ReportTaskPublisher, ReportGenerator y ReportStorage del diseño, y errores de aplicación; verificar sus usos mediante dependencias falsas en tests/unit/application y comprobar que dominio/aplicación no importan frameworks.
+- [x] 2.3 Implementar RequestReport para confirmar pending antes de publicar; verificar con fakes el orden commit/publicación, ausencia de publicación si falla la persistencia y respuesta de error con registro fallido ante publicación fallida.
+- [x] 2.4 Implementar GetReport sobre el repositorio; verificar consulta de todos los estados y error para UUID inexistente, sin crear nuevas tareas ni registros.
+- [x] 2.5 Implementar GenerateReport con transacciones cortas, incremento de intentos, resultados terminales y presupuesto de tres intentos; verificar con fakes éxito, reintento, agotamiento, error permanente y omisión de reportes completed/failed sin efectos adicionales.
+- [x] 2.6 Documentar las responsabilidades de las capas y sus dependencias en README, enlazando al diseño; verificar mediante una prueba de arquitectura que el dominio no depende del ORM y los casos de uso no dependen de presentación/infraestructura.
 
 ## 3. Persistencia SQLModel sobre PostgreSQL
 
