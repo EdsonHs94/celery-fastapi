@@ -14,11 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def register_report_task(app: Celery):
-    @app.task(bind=True, name=TASK_NAME, ignore_result=True, max_retries=2)
+    @app.task(
+        bind=True, name=TASK_NAME, ignore_result=True, max_retries=2, shared=False
+    )
     def generate_report(task, report_id: str) -> None:
         identifier = UUID(report_id)
         logger.info("report_id=%s stage=received", identifier)
-        with reports.generate_report_scope(app) as use_case:
+        with reports.generate_report_scope(task.app) as use_case:
             try:
                 result = use_case.execute(identifier)
             except TemporaryReportError as exc:

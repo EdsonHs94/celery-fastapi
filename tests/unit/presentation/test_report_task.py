@@ -243,3 +243,50 @@ def test_real_composition_opens_distinct_scope_and_closes_on_error(tmp_path):
         raise ValueError()
     assert sessions[0] is not sessions[1]
     assert closed == sessions
+
+
+def test_factories_compose_with_their_own_app_before_finalize(monkeypatch, tmp_path):
+    import app.bootstrap.reports as composition
+    from app.bootstrap.config import Settings
+    from app.bootstrap.worker import create_celery_app
+
+    first_settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://u:p@first/reports",
+        broker_url="amqp://u:p@broker/reports",
+        reports_dir=tmp_path / "first",
+        simulate_transient_failure=True,
+    )
+    second_settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://u:p@second/reports",
+        broker_url="amqp://u:p@broker/reports",
+        reports_dir=tmp_path / "second",
+        simulate_transient_failure=False,
+    )
+    observed = []
+    report = Report(id=uuid4(), created_at=datetime.now(UTC))
+
+    @contextmanager
+    def dependencies(app):
+        observed.append((app, app.database, app.report_settings))
+        repository = MemoryRepository((report,))
+        yield GenerateReport(repository, Generator(repository), Storage(repository))
+
+    monkeypatch.setattr(composition, "generate_report_scope", dependencies)
+    first = create_celery_app(first_settings)
+    second = create_celery_app(second_settings)
+    try:
+        assert not first.finalized and not second.finalized
+        first.finalize()
+        second.finalize()
+        first.tasks["reports.generate"].run(str(report.id))
+        second.tasks["reports.generate"].run(str(report.id))
+        assert observed == [
+            (first, first.database, first_settings),
+            (second, second.database, second_settings),
+        ]
+        assert first.database is not second.database
+    finally:
+        first.close()
+        second.close()
