@@ -20,10 +20,10 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 3. Persistencia SQLModel sobre PostgreSQL
 
-- [ ] 3.1 Crear ReportTable y migración Alembic inicial con campos y nulabilidad del diseño; verificar upgrade desde base vacía, columnas esperadas y downgrade sobre una base de prueba.
-- [ ] 3.2 Implementar el repositorio específico con conversión entidad/tabla y transaction() que confirma o revierte según el resultado; verificar contra PostgreSQL alta, consulta, actualización, UUID ausente y rollback sin escrituras parciales.
-- [ ] 3.3 Crear factories de engine/sesión para API y procesos del worker, con cierre por petición/tarea y sin conexiones abiertas heredadas entre procesos; verificar aislamiento de dos sesiones, persistencia entre ellas y cierre tanto en éxito como en error.
-- [ ] 3.4 Documentar migraciones y configuración de PostgreSQL en README; verificar el comando de migración con el servicio Compose y que la API no crea tablas al iniciar.
+- [x] 3.1 Crear ReportTable y migración Alembic inicial con campos y nulabilidad del diseño; verificar upgrade desde base vacía, columnas esperadas y downgrade sobre una base de prueba.
+- [x] 3.2 Implementar el repositorio específico con conversión entidad/tabla y transaction() que confirma o revierte según el resultado; verificar contra PostgreSQL alta, consulta, actualización, UUID ausente y rollback sin escrituras parciales.
+- [x] 3.3 Crear factories de engine/sesión para API y procesos del worker, con cierre por petición/tarea y sin conexiones abiertas heredadas entre procesos; verificar aislamiento de dos sesiones, persistencia entre ellas y cierre tanto en éxito como en error.
+- [x] 3.4 Documentar migraciones y configuración de PostgreSQL en README; verificar el comando de migración con el servicio Compose y que la API no crea tablas al iniciar.
 
 ## 4. CSV y almacenamiento compartido
 
