@@ -27,10 +27,10 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 4. CSV y almacenamiento compartido
 
-- [ ] 4.1 Implementar el generador determinista de 100 ventas con Decimal, encabezado y formato exactos; verificar con pruebas UTF-8, importes de dos decimales, 100 filas y contenido idéntico entre dos reportes.
-- [ ] 4.2 Incorporar la simulación configurable de TemporaryReportError solo en el primer intento y el comentario educativo literal del diseño; verificar fallo antes de producir bytes, éxito en el segundo intento y éxito inicial al desactivarla.
-- [ ] 4.3 Implementar escritura temporal y sustitución atómica con referencias relativas dentro de REPORTS_DIR; verificar nombre final, conservación del archivo completo, ausencia de descarga parcial, resolución restringida al directorio y error de archivo perdido.
-- [ ] 4.4 Documentar el contenido ficticio, la ubicación compartida y cómo desactivar la simulación; verificar que el ejemplo de CSV coincide con el generador y el comentario explica que el fallo es intencional y educativo.
+- [x] 4.1 Implementar el generador determinista de 100 ventas con Decimal, encabezado y formato exactos; verificar con pruebas UTF-8, importes de dos decimales, 100 filas y contenido idéntico entre dos reportes.
+- [x] 4.2 Incorporar la simulación configurable de TemporaryReportError solo en el primer intento y el comentario educativo literal del diseño; verificar fallo antes de producir bytes, éxito en el segundo intento y éxito inicial al desactivarla.
+- [x] 4.3 Implementar escritura temporal y sustitución atómica con referencias relativas dentro de REPORTS_DIR; verificar nombre final, conservación del archivo completo, ausencia de descarga parcial, resolución restringida al directorio y error de archivo perdido.
+- [x] 4.4 Documentar el contenido ficticio, la ubicación compartida y cómo desactivar la simulación; verificar que el ejemplo de CSV coincide con el generador y el comentario explica que el fallo es intencional y educativo.
 
 ## 5. Publicación y procesamiento con Celery
 
