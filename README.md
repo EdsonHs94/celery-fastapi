@@ -539,8 +539,11 @@ solo para pruebas dos generadores falsos en el worker real: transitorio hasta
 failed/3 y permanente failed/1, ambos con descarga 409 y sin archivo. No añade
 configuración ni endpoints de producto; la imagen de producción excluye tests.
 
-Las esperas están acotadas; ante error imprime logs y limpia únicamente sus
-recursos en `finally`. El detalle de alcance, comandos y cobertura de cada
+Las esperas están acotadas; ante error imprime logs. En `finally` intenta retirar
+sus contenedores/volúmenes y su imagen de forma independiente, y registra fallos
+de limpieza: un recorrido exitoso con cleanup incompleto termina con error; si
+ya falló el recorrido, conserva ese error original. El detalle de alcance y
+cobertura de cada
 escenario está en la [matriz de verificación](docs/verification.md). El recorrido
 anterior `verify_report_worker.py` sigue disponible para inspeccionar el mensaje
 JSON del broker sin pasar por HTTP.

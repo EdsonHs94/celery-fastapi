@@ -7,6 +7,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -324,6 +325,44 @@ class LifecycleVerification:
             )
 
 
+def cleanup_resources(command, docker, image, environment, *, primary_error=None):
+    """Intenta ambas limpiezas y conserva cualquier error original del recorrido."""
+    failures = []
+    operations = (
+        ("compose down", command + ["down", "--volumes", "--remove-orphans"], 180),
+        ("image rm", docker + ["image", "rm", image], 60),
+    )
+    for label, arguments, timeout in operations:
+        try:
+            result = subprocess.run(
+                arguments,
+                env=environment,
+                timeout=timeout,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            detail = f"cleanup {label}: {type(error).__name__}: {error}"
+            failures.append(detail)
+            print(detail, file=sys.stderr, flush=True)
+        else:
+            detail = f"cleanup {label}: returncode={result.returncode}"
+            print(detail, file=sys.stderr, flush=True)
+            if result.returncode:
+                failures.append(detail)
+                print(result.stdout + result.stderr, file=sys.stderr, flush=True)
+    if failures:
+        if primary_error is None:
+            raise RuntimeError("Cleanup incompleto: " + "; ".join(failures))
+        print(
+            "Cleanup incompleto; se conserva error primario "
+            f"{type(primary_error).__name__}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", help="Contexto Docker, sin cambiar el global")
@@ -433,17 +472,8 @@ def main():
                 print(f"No se pudieron obtener logs: {error}", flush=True)
             raise
         finally:
-            subprocess.run(
-                command + ["down", "--volumes", "--remove-orphans"],
-                env=environment,
-                timeout=180,
-                check=False,
-            )
-            subprocess.run(
-                docker + ["image", "rm", image],
-                env=environment,
-                timeout=60,
-                check=False,
+            cleanup_resources(
+                command, docker, image, environment, primary_error=sys.exc_info()[1]
             )
 
 

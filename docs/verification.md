@@ -29,8 +29,11 @@ propias, proyecto y volúmenes únicos, y puertos efímeros en `127.0.0.1`. Sobr
 las variables interpoladas del entorno del host. Verifica ausencia de tablas,
 ejecuta Alembic explícitamente y arranca API antes del worker. Conserva el
 prefork, concurrencia 1 y prefetch 1. Las esperas HTTP/Compose/subprocesos están
-acotadas; ante error imprime logs y ejecuta `down --volumes` solo para su proyecto,
-seguido de la eliminación de su imagen.
+acotadas; ante error imprime logs. En `finally` intenta `down --volumes` solo para
+su proyecto y retirar su imagen, de forma independiente incluso ante timeout.
+Registra códigos y errores de ambas operaciones. Cleanup incompleto impide exit 0
+tras un recorrido exitoso; si el recorrido ya falló, conserva el error primario y
+registra el fallo de limpieza como secundario.
 
 API usa el comando Uvicorn normal de la imagen. Su factory configura INFO con
 `logging.basicConfig` solo cuando el host no ha configurado handlers, permitiendo
@@ -120,7 +123,8 @@ Evidencia de implementación, 2026-10-27:
 | `python3 scripts/verify_report_lifecycle.py --help` (host Python 3.9) | **exit 0**, smoke de argumentos únicamente; no acredita ejecución del recorrido en Python 3.9 |
 | `.venv/bin/pytest -q tests/unit/bootstrap/test_api_logging.py` antes del fix | **1 failed, 1 passed**, 0.90s; INFO no llegaba a stderr con configuración Uvicorn normal |
 | Mismo comando tras `basicConfig` sin force en factory API | **2 passed**, 0.79s; INFO visible y handler/nivel preconfigurados conservados |
-| `TEST_DATABASE_URL=… .venv/bin/pytest -q` (PostgreSQL aislado del coordinador) | **170 passed**, 3.33s; sin skips |
+| `TEST_DATABASE_URL=… .venv/bin/pytest -q` (ronda anterior al ajuste de cleanup) | **170 passed**, 3.33s; sin skips |
+| `TEST_DATABASE_URL=… .venv/bin/pytest -q` (estado final, PostgreSQL aislado del coordinador) | **180 passed**, 2.87s; sin warnings ni skips |
 | `uv run --locked --no-sync python scripts/verify_report_lifecycle.py --context desktop-linux` (Python 3.12 del proyecto) | **exit 0**, cuatro casos PASS; proyecto `reports-task7-63325ea1d4e0`, cleanup propio completado |
 | `.venv/bin/ruff check .` | **All checks passed!**, confirmado por coordinador |
 | `openspec validate async-report-generation --strict --no-interactive` | **Válido**, confirmado por coordinador |
@@ -141,3 +145,23 @@ ejecución completó todos los casos y el cleanup. Evidencia de estados terminal
 Matriz contrastada con la especificación: **23/23 escenarios** y los métodos
 referenciados existen. Tareas 7.1–7.4 marcadas tras recibir esta evidencia real,
 suite PostgreSQL completa y checks finales. No se archiva el cambio OpenSpec.
+
+## Ajuste focal tras revisión
+
+La revisión detectó que `check=False` ignoraba fallos de cleanup y un timeout en
+`down` evitaba intentar retirar la imagen. Se verificó el defecto mediante
+`tests/unit/scripts/test_lifecycle_cleanup.py`: **RED 10 failed in 0.05s** con el
+comportamiento anterior extraído sin cambiarlo, y **GREEN 10 passed in 0.02s**
+tras la corrección localizada. Los dobles de subprocess cubren ambos éxitos,
+nonzero de cada operación/ambas, timeout inicial seguido del intento de imagen y
+preservación del mismo error primario. Ruff focal: **All checks passed!**.
+No se repitió Docker: los escenarios y composición reales permanecen iguales;
+el coordinador completó los checks finales de esta revisión.
+
+Evidencia final del ajuste: **180 passed in 2.87s**, sin warnings/skips; Ruff
+check/format correctos sobre **57 archivos**. Smoke Docker real del helper en
+proyecto aislado `reports-task7-cleanup-1455b86ede`: `compose down` e `image rm`
+registraron **returncode=0**; después se confirmó la ausencia de contenedores,
+redes, volúmenes e imagen propios. El recorrido Compose completo conserva su
+evidencia anterior de cuatro casos PASS: sus escenarios no cambiaron, y el
+cleanup actual quedó validado con Docker real y diez pruebas focales.
