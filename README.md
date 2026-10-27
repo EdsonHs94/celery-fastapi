@@ -518,6 +518,33 @@ workers ni garantía exactamente una vez. Una caída entre commit y publicación
 puede dejar `pending` sin mensaje; un timeout de confirmación puede ser ambiguo.
 Los terminales se omiten sin regenerar ni relanzar `failed`.
 
+## Verificación integrada final
+
+Para comprobar el contrato HTTP completo desde una base vacía, ejecuta:
+
+```bash
+uv run --locked python scripts/verify_report_lifecycle.py
+# Contexto opcional sin cambiar el contexto global:
+uv run --locked python scripts/verify_report_lifecycle.py --context desktop-linux
+```
+
+Requiere Docker/Compose y uv; ejecuta el Python 3.12 del proyecto resuelto por uv.
+El runner usa solo la biblioteca estándar. Reutiliza
+`compose.yaml` con un override temporal, imagen y volúmenes propios, credenciales
+aleatorias y puertos efímeros en `127.0.0.1`. Comprueba migraciones, POST 202 sin
+worker, pending/0, simulación activa completed/2 con espera de cinco segundos,
+simulación desactivada completed/1, descargas CSV idénticas de 100 ventas y una
+reentrega consumida sin modificar archivo, fechas ni intentos. Después monta
+solo para pruebas dos generadores falsos en el worker real: transitorio hasta
+failed/3 y permanente failed/1, ambos con descarga 409 y sin archivo. No añade
+configuración ni endpoints de producto; la imagen de producción excluye tests.
+
+Las esperas están acotadas; ante error imprime logs y limpia únicamente sus
+recursos en `finally`. El detalle de alcance, comandos y cobertura de cada
+escenario está en la [matriz de verificación](docs/verification.md). El recorrido
+anterior `verify_report_worker.py` sigue disponible para inspeccionar el mensaje
+JSON del broker sin pasar por HTTP.
+
 ## Logs y almacenamiento
 
 ```bash

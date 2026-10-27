@@ -50,10 +50,10 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 7. Verificación integrada del comportamiento
 
-- [ ] 7.1 Ejecutar el recorrido Compose con base vacía, migraciones y simulación activa; verificar POST 202, seguimiento de dos intentos, estado completed y descarga del CSV con 100 filas mediante una prueba de integración reproducible.
-- [ ] 7.2 Repetir con la simulación desactivada y verificar completed con un intento; volver a entregar un UUID completado y verificar que archivo, fechas y cantidad de intentos no cambian.
-- [ ] 7.3 Ejecutar pruebas integradas de errores con generador de prueba transitorio permanente y otro no recuperable; verificar failed a los tres intentos en el primer caso, failed sin retry en el segundo y rechazo de la descarga en ambos.
-- [ ] 7.4 Ejecutar pruebas unitarias, de arquitectura, repositorio y recorrido real, además de `openspec validate async-report-generation --strict --no-interactive`; verificar que todos los escenarios de la especificación tienen cobertura y registrar comandos/resultados antes de marcar tareas completadas.
+- [x] 7.1 Ejecutar el recorrido Compose con base vacía, migraciones y simulación activa; verificar POST 202, seguimiento de dos intentos, estado completed y descarga del CSV con 100 filas mediante una prueba de integración reproducible.
+- [x] 7.2 Repetir con la simulación desactivada y verificar completed con un intento; volver a entregar un UUID completado y verificar que archivo, fechas y cantidad de intentos no cambian.
+- [x] 7.3 Ejecutar pruebas integradas de errores con generador de prueba transitorio permanente y otro no recuperable; verificar failed a los tres intentos en el primer caso, failed sin retry en el segundo y rechazo de la descarga en ambos.
+- [x] 7.4 Ejecutar pruebas unitarias, de arquitectura, repositorio y recorrido real, además de `openspec validate async-report-generation --strict --no-interactive`; verificar que todos los escenarios de la especificación tienen cobertura y registrar comandos/resultados antes de marcar tareas completadas.
 
 ## Workflow follow-up
 
