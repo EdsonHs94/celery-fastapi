@@ -42,11 +42,11 @@ Checklist de implementación futura; ninguna tarea se completa al preparar el SD
 
 ## 6. API e inyección de dependencias
 
-- [ ] 6.1 Crear ReportCreate, esquema de aceptación y ReportResponse como modelos de datos sin tabla, separados de ReportTable y Report; verificar validación de objeto vacío, rechazo de campos extra y serialización sin rutas internas ni trazas.
-- [ ] 6.2 Construir casos de uso con Depends y sesiones síncronas por petición; implementar POST /reports y verificar 202 con id/URLs, 422 sin efectos, 503 ante fallo de persistencia y 503 con report_id ante fallo de publicación.
-- [ ] 6.3 Implementar GET /reports/{id} con lectura del estado persistido; verificar 200 en todos los estados, fechas/errores anulables, URL de descarga solo en completed, UUID ausente 404 e inválido 422.
-- [ ] 6.4 Implementar GET /reports/{id}/download con almacenamiento inyectado; verificar 200 y encabezados de descarga, 409 para estados no completados, 410 para archivo perdido, 404 para reporte ausente y 422 para UUID inválido.
-- [ ] 6.5 Completar ejemplos curl y contratos de respuesta en README; verificar los ejemplos contra la API y que la documentación OpenAPI muestra los esquemas de transporte, sin exponer el modelo de tabla.
+- [x] 6.1 Crear ReportCreate, esquema de aceptación y ReportResponse como modelos de datos sin tabla, separados de ReportTable y Report; verificar validación de objeto vacío, rechazo de campos extra y serialización sin rutas internas ni trazas.
+- [x] 6.2 Construir casos de uso con Depends y sesiones síncronas por petición; implementar POST /reports y verificar 202 con id/URLs, 422 sin efectos, 503 ante fallo de persistencia y 503 con report_id ante fallo de publicación.
+- [x] 6.3 Implementar GET /reports/{id} con lectura del estado persistido; verificar 200 en todos los estados, fechas/errores anulables, URL de descarga solo en completed, UUID ausente 404 e inválido 422.
+- [x] 6.4 Implementar GET /reports/{id}/download con almacenamiento inyectado; verificar 200 y encabezados de descarga, 409 para estados no completados, 410 para archivo perdido, 404 para reporte ausente y 422 para UUID inválido.
+- [x] 6.5 Completar ejemplos curl y contratos de respuesta en README; verificar los ejemplos contra la API y que la documentación OpenAPI muestra los esquemas de transporte, sin exponer el modelo de tabla.
 
 ## 7. Verificación integrada del comportamiento
 

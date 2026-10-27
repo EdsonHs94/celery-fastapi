@@ -1,6 +1,7 @@
 """Contratos síncronos; los adaptadores no filtran sesiones ni frameworks."""
 
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
@@ -33,3 +34,7 @@ class ReportGenerator(Protocol):
 
 class ReportStorage(Protocol):
     def write(self, report_id: UUID, content: bytes) -> str: ...
+
+
+class ReportFileResolver(Protocol):
+    def resolve(self, file_ref: str) -> Path: ...

@@ -6,8 +6,9 @@ implementa el dominio y los casos de uso con contratos y pruebas unitarias. La
 tarea 3 añade persistencia SQLModel/PostgreSQL, migraciones Alembic y sesiones
 por petición/proceso del worker. La tarea 4 incorpora el generador CSV y el
 almacenamiento de archivos completos. La tarea 5 conecta publicación y
-procesamiento real con Celery/RabbitMQ. La API ofrece `GET /health` y la
-documentación en `/docs`; las rutas HTTP de reportes siguen pendientes.
+procesamiento real con Celery/RabbitMQ. La tarea 6 añade aceptación, consulta y
+descarga de reportes por HTTP. La API ofrece también `GET /health` y la
+documentación OpenAPI en `/docs`.
 
 El diseño y los escenarios están en
 [OpenSpec](openspec/changes/async-report-generation/design.md). El progreso se
@@ -205,7 +206,9 @@ upgrade head`. Para crear una revisión futura usa `alembic revision
 proceso y crea una sesión síncrona distinta con cada `with database.session()`;
 el scope siempre la cierra en éxito y error. La dependencia
 `get_report_repository` obtiene ese scope desde `request.app.state.database`
-para las futuras rutas. El lifespan de FastAPI libera el pool al terminar.
+para las rutas de reportes. El lifespan de FastAPI libera el pool y cierra el
+cliente Celery propio, si se creó, al terminar. Cada aplicación conserva sus
+settings y recursos aislados; crearla no abre conexiones SQL ni AMQP.
 Celery conserva el recurso en `app.database`, sin construir engine ni abrir
 conexiones en el proceso padre. `worker_process_init` descarta cualquier pool
 heredado con `dispose(close=False)`; también hay comprobación defensiva del PID.
@@ -292,7 +295,7 @@ Las pruebas unitarias llaman a `GenerateReport` con adaptadores reales y un
 repositorio de prueba. El recorrido real descrito abajo añade PostgreSQL,
 RabbitMQ y el worker Celery. La composición pasa
 `settings.simulate_transient_failure` al generador y `settings.reports_dir` al
-almacenamiento; los adaptadores no leen el entorno. Las rutas HTTP siguen pendientes.
+almacenamiento; los adaptadores no leen el entorno.
 
 `LocalReportStorage(reports_dir: Path)` crea el directorio al escribir. Primero
 escribe y cierra un temporal único dentro de él, y luego usa sustitución atómica
@@ -305,20 +308,123 @@ El método concreto `resolve(file_ref)` devuelve un `Path` solo para nombres
 canónicos `report-{uuid}.csv` dentro de la raíz. Rechaza rutas absolutas,
 traversal, temporales, directorios y symlinks, incluidos los internos. No recibe
 rutas del cliente. Si falta un archivo final, lanza `ReportFileMissing` con
-código público `report_file_missing`, disponible para el futuro HTTP 410 sin
-exponer rutas privadas. No se añade esa operación al contrato de aplicación.
+código público `report_file_missing`, traducido a HTTP 410 sin
+exponer rutas privadas. El contrato pequeño `ReportFileResolver` permite
+inyectar la resolución en la descarga sin acoplarla al adaptador concreto.
 
 El volumen Compose `reports` es compartido por API y worker, ambos en
 `/app/reports`, el valor de `REPORTS_DIR`. Así, el worker escribe donde
-la futura ruta de descarga resolverá el archivo. Cambiar esa ruta requiere ajustar el montaje de
+la ruta de descarga resuelve el archivo. Cambiar esa ruta requiere ajustar el montaje de
 ambos servicios. La sustitución evita servir archivos parciales; no se ofrecen
 locks entre consumidores ni durabilidad ante caída con `fsync`. El laboratorio
 prevé un consumidor.
 
+## API de reportes
+
+Con el laboratorio iniciado, acepta un encargo enviando el objeto JSON vacío
+obligatorio. Los campos extra se rechazan:
+
+```bash
+API_URL=http://localhost:8000
+curl -i -X POST "$API_URL/reports" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+La respuesta es `202 Accepted`, con este formato:
+
+```json
+{"id":"6c678f08-5a90-4dc1-b4ae-c5744e249df3","status_url":"/reports/6c678f08-5a90-4dc1-b4ae-c5744e249df3","download_url":"/reports/6c678f08-5a90-4dc1-b4ae-c5744e249df3/download"}
+```
+
+Las URLs son relativas al origen de la API. La aceptación confirma el registro
+SQL y la publicación, y no promete que la generación haya terminado. El worker
+puede avanzar antes de recibir la respuesta; por eso el `202` no incluye estado.
+Cada `POST` crea un UUID nuevo: repetirlo no es una operación idempotente.
+
+Para guardar el UUID de una nueva solicitud y consultar su estado:
+
+```bash
+REPORT_ID=$(curl --fail-with-body -sS -X POST "$API_URL/reports" \
+  -H 'Content-Type: application/json' -d '{}' | \
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')
+curl --fail-with-body -sS "$API_URL/reports/$REPORT_ID"
+```
+
+`GET /reports/{id}` devuelve `200` en cualquiera de los estados `pending`,
+`processing`, `retrying`, `completed` o `failed`. PostgreSQL es la fuente de
+estado; la consulta no utiliza resultados Celery. Ejemplo recién aceptado:
+
+```json
+{"id":"6c678f08-5a90-4dc1-b4ae-c5744e249df3","status":"pending","attempts":0,"created_at":"2026-01-01T00:00:00Z","started_at":null,"finished_at":null,"download_url":null,"error_code":null}
+```
+
+Las fechas ausentes y el error sin valor son `null`. `download_url` solo tiene
+valor en `completed`; `file_ref`, rutas internas y trazas no se serializan.
+La simulación activa permite observar `retrying` antes del segundo intento.
+Espera un estado terminal antes de descargar:
+
+```bash
+while true; do
+  REPORT_STATUS=$(curl --fail-with-body -sS "$API_URL/reports/$REPORT_ID" | \
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])') || break
+  echo "$REPORT_STATUS"
+  case "$REPORT_STATUS" in completed|failed) break ;; esac
+  sleep 1
+done
+# Ejecutar cuando el estado sea completed:
+curl --fail-with-body -OJ "$API_URL/reports/$REPORT_ID/download"
+```
+
+La descarga responde `200`, `Content-Type: text/csv` y
+`Content-Disposition: attachment; filename="report-{id}.csv"`. `curl -OJ`
+guarda ese nombre en el directorio actual. El archivo contiene 100 ventas.
+Un reporte `failed` conserva un `error_code` público y no admite descarga.
+
+Los errores de aplicación usan `{"detail":{"code":"…","message":"…"}}`:
+
+| HTTP | Código | Situación |
+|---|---|---|
+| 404 | `report_not_found` | UUID válido sin registro, tanto en consulta como descarga. |
+| 409 | `report_not_ready` | Descarga de cualquier estado distinto de `completed`, incluido `failed`. |
+| 410 | `report_file_missing` | Estado `completed` cuyo archivo ya no existe. |
+| 503 | `persistence_unavailable` | Fallo al guardar o consultar en PostgreSQL. |
+| 503 | `publication_failed` | Fallo detectado al publicar; incluye `detail.report_id` porque ya se confirmó el registro. |
+
+Ante fallo de publicación se intenta marcar `failed` con el código
+`publication_failed`. Si el worker ya completó el reporte, se conserva ese
+resultado. Consulta `detail.report_id` para diagnosticarlo antes de repetir el
+POST; un timeout de publicación puede ser ambiguo.
+
+Estos ejemplos muestran validación y ausentes sin modificar datos:
+
+```bash
+# 422: UUID inválido; 404: UUID válido inexistente.
+curl -i "$API_URL/reports/no-es-un-uuid"
+curl -i "$API_URL/reports/00000000-0000-0000-0000-000000000000"
+# 422: no se aceptan campos extra, null ni cuerpo ausente.
+curl -i -X POST "$API_URL/reports" \
+  -H 'Content-Type: application/json' -d '{"filter":"unused"}'
+curl -i -X POST "$API_URL/reports" \
+  -H 'Content-Type: application/json' -d 'null'
+curl -i -X POST "$API_URL/reports"
+```
+
+`422` usa el formato convencional de validación de FastAPI y no crea ni publica
+un reporte. Para observar `409`, detén el worker con `docker compose stop worker`,
+acepta un reporte y llama a su URL de descarga mientras siga `pending`; después
+reanuda con `docker compose up -d --no-build worker`. `410` requiere que se haya
+perdido el CSV de un reporte completado. `503` se observa si PostgreSQL o RabbitMQ
+no están disponibles durante la operación; `/health` sigue comprobando solo el
+proceso. No hay endpoints públicos para provocar esos fallos.
+
+`/docs` y `/openapi.json` muestran `ReportCreate`, `ReportAccepted`,
+`ReportResponse`, los errores y la descarga CSV. Son modelos SQLModel de datos,
+sin tabla, separados de la entidad de dominio y de `ReportTable`.
+
 ## Publicación y procesamiento Celery
 
-Para solicitar un reporte en el laboratorio iniciado, usa este cliente temporal
-que compone el mismo caso de uso previsto para la futura ruta HTTP:
+Como utilidad de diagnóstico, este cliente Python compone el mismo caso de
+uso que `POST /reports` directamente dentro del contenedor:
 
 ```bash
 docker compose run --rm -T --no-deps api python - <<'PYCLIENT'

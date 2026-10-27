@@ -60,6 +60,6 @@ class Database:
 
 
 def get_report_repository(request: Request) -> Iterator[ReportRepository]:
-    """Dependencia para futuras rutas síncronas; no abre sesión en /health."""
+    """Dependencia de rutas síncronas; no abre sesión en /health."""
     with request.app.state.database.session() as session:
         yield SQLModelReportRepository(session)

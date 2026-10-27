@@ -44,3 +44,8 @@ class TemporaryReportError(ApplicationError):
 class ReportFileMissing(ApplicationError):
     code = "report_file_missing"
     message = "El archivo del reporte ya no está disponible."
+
+
+class ReportNotReady(ApplicationError):
+    code = "report_not_ready"
+    message = "El reporte todavía no está disponible para descarga."
