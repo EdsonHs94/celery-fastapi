@@ -1,5 +1,6 @@
 """Casos de uso compartidos por presentación HTTP y procesamiento de tareas."""
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -78,6 +79,9 @@ class GetReport:
             return _get(self.repository, report_id)
 
 
+logger = logging.getLogger(__name__)
+
+
 class GenerateReport:
     def __init__(
         self,
@@ -102,6 +106,9 @@ class GenerateReport:
             report = report.start_attempt()
             self.repository.save(report)
 
+        logger.info(
+            "report_id=%s stage=processing attempt=%s", report_id, report.attempts
+        )
         # Generación y archivos quedan fuera de las transacciones SQL.
         file_ref = None
         error_code = None
@@ -127,7 +134,20 @@ class GenerateReport:
                 result = current.fail("attempts_exhausted" if temporary else error_code)
             self.repository.save(result)
 
+        logger.info(
+            "report_id=%s stage=%s attempt=%s",
+            report_id,
+            result.status.value,
+            result.attempts,
+        )
         # Un commit fallido nunca debe provocar un retry con estado no confirmado.
         if result.status == ReportStatus.RETRYING:
             raise TemporaryReportError()
         return result
+
+    def fail_retry_publication(self, report_id: UUID) -> None:
+        """Compensación best-effort; conserva cualquier terminal ya observado."""
+        with _transaction(self.repository):
+            current = _get(self.repository, report_id)
+            if not current.is_terminal:
+                self.repository.save(current.fail("retry_publication_failed"))
