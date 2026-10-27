@@ -1,5 +1,6 @@
 """Construcción de la entrada HTTP del laboratorio."""
 
+import logging
 from contextlib import asynccontextmanager
 from threading import Lock
 
@@ -20,6 +21,9 @@ from app.presentation.reports import router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    # Uvicorn configura sus propios loggers; el seguimiento de app necesita INFO.
+    # basicConfig conserva handlers/niveles cuando el host ya configuró logging.
+    logging.basicConfig(level=logging.INFO)
     configured = settings if settings is not None else Settings()
     database = Database(str(configured.database_url))
 
